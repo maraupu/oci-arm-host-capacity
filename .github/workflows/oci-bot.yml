@@ -2,8 +2,8 @@ name: OCI ARM Host Capacity Bot
 
 on:
   schedule:
-    - cron: '*/1 * * * *' # Berjalan otomatis setiap 1 menit
-  workflow_dispatch: # Memungkinkan Anda menjalankan bot secara manual lewat tombol
+    - cron: '*/1 * * * *' # Otomatis berjalan setiap 1 menit
+  workflow_dispatch: # Memungkinkan Anda menjalankan bot secara manual
 
 jobs:
   run-bot:
@@ -30,34 +30,33 @@ jobs:
         echo "fingerprint=${{ secrets.OCI_FINGERPRINT }}" >> ~/.oci/config
         echo "tenancy=${{ secrets.OCI_TENANCY_ID }}" >> ~/.oci/config
         echo "region=${{ secrets.OCI_REGION }}" >> ~/.oci/config
-        echo "key_file=~/.oci/oci_api_key.pem" >> ~/.oci/config
+        echo "key_file=/home/runner/.oci/oci_api_key.pem" >> ~/.oci/config
         
-        # Menggunakan format kustom agar teks teks privat terbaca utuh multi-baris
-        cat << 'EOF' > ~/.oci/oci_api_key.pem
+        cat << 'EOF' > /home/runner/.oci/oci_api_key.pem
         ${{ secrets.OCI_PRIVATE_KEY }}
         EOF
-        
-        chmod 600 ~/.oci/oci_api_key.pem
+        chmod 600 /home/runner/.oci/oci_api_key.pem
 
-      - name: Run Bot Script
+    - name: Run Bot Script
       env:
+        # Parameter API utama
         OCI_USER_ID: ${{ secrets.OCI_USER_ID }}
         OCI_TENANCY_ID: ${{ secrets.OCI_TENANCY_ID }}
         OCI_REGION: ${{ secrets.OCI_REGION }}
+        OCI_KEY_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+        OCI_PRIVATE_KEY_FILENAME: /home/runner/.oci/oci_api_key.pem
+        
+        # Parameter Spesifikasi & Jaringan Jatah ARM Gratisan Anda
         OCI_SUBNET_ID: ${{ secrets.OCI_SUBNET_ID }}
         OCI_IMAGE_ID: ${{ secrets.OCI_IMAGE_ID }}
         OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
-        OCI_KEY_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
-        OCI_PRIVATE_KEY_FILENAME: /home/runner/.oci/oci_api_key.pem
-        # Menambahkan variabel bentuk server (Shape) ARM Always Free
         OCI_SHAPE: VM.Standard.A1.Flex
-        # Pembatasan spesifikasi ARM kustom Anda
         OCI_OCPUS: 2
         OCI_MEMORY_IN_GBS: 12
         OCI_BOOT_VOLUME_SIZE_IN_GBS: 150
+        
+        # Pengaturan Tambahan agar Bot Berjalan Stabil
+        OCI_AVAILABILITY_DOMAIN: "" # Biarkan kosong agar otomatis mendeteksi semua domain yang tersedia
+        OCI_MAX_INSTANCES: 1 # Maksimal membuat 1 instance saja
       run: |
         php index.php
-
-
-
-
