@@ -1,7 +1,6 @@
 <?php
 declare(strict_types=1);
 
-
 // useful when script is being executed by cron user
 $pathPrefix = ''; // e.g. /usr/share/nginx/oci-arm-host-capacity/
 
@@ -19,10 +18,7 @@ $dotenv = Dotenv::createUnsafeImmutable(__DIR__, $envFilename);
 $dotenv->safeLoad();
 
 /*
- * No need to modify any value in this file anymore!
- * Copy .env.example to .env and adjust there instead.
- *
- * README.md now has all the information.
+ * Configuration setup from .env / Environment Variables
  */
 $config = new OciConfig(
     getenv('OCI_REGION'),
@@ -30,7 +26,7 @@ $config = new OciConfig(
     getenv('OCI_TENANCY_ID'),
     getenv('OCI_KEY_FINGERPRINT'),
     getenv('OCI_PRIVATE_KEY_FILENAME'),
-    getenv('OCI_AVAILABILITY_DOMAIN') ?: null, // null or '' or 'jYtI:PHX-AD-1' or ['jYtI:PHX-AD-1','jYtI:PHX-AD-2']
+    getenv('OCI_AVAILABILITY_DOMAIN') ?: null,
     getenv('OCI_SUBNET_ID'),
     getenv('OCI_IMAGE_ID'),
     (int) getenv('OCI_OCPUS'),
@@ -52,15 +48,8 @@ if (getenv('CACHE_AVAILABILITY_DOMAINS')) {
 if (getenv('TOO_MANY_REQUESTS_TIME_WAIT')) {
     $api->setWaiter(new TooManyRequestsWaiter((int) getenv('TOO_MANY_REQUESTS_TIME_WAIT')));
 }
+
 $notifier = (function (): \Hitrov\Interfaces\NotifierInterface {
-    /*
-     * if you have own https://core.telegram.org/bots
-     * and set TELEGRAM_BOT_API_KEY and your TELEGRAM_USER_ID in .env
-     *
-     * then you can get notified when script will succeed.
-     * otherwise - don't mind OR develop you own NotifierInterface
-     * to e.g. send SMS or email.
-     */
     return new \Hitrov\Notification\Telegram();
 })();
 
@@ -71,12 +60,13 @@ if (getenv('OCI_MAX_INSTANCES') !== false) {
     $maxRunningInstancesOfThatShape = (int) getenv('OCI_MAX_INSTANCES');
 }
 
+// Cek apakah instance sudah pernah dibuat sebelumnya
 $instances = $api->getInstances($config);
-
 $existingInstances = $api->checkExistingInstances($config, $instances, $shape, $maxRunningInstancesOfThatShape);
 if ($existingInstances) {
     echo "$existingInstances\n";
-    return;
+    // Instance sudah ada, keluar dengan exit 0 (sukses) agar tidak mencoba buat lagi
+    exit(0); 
 }
 
 if (!empty($config->availabilityDomains)) {
@@ -89,37 +79,41 @@ if (!empty($config->availabilityDomains)) {
     $availabilityDomains = $api->getAvailabilityDomains($config);
 }
 
+// Mulai perulangan pencobaan pembuatan instance di Availability Domain
 foreach ($availabilityDomains as $availabilityDomainEntity) {
     $availabilityDomain = is_array($availabilityDomainEntity) ? $availabilityDomainEntity['name'] : $availabilityDomainEntity;
+    
     try {
         $instanceDetails = $api->createInstance($config, $shape, getenv('OCI_SSH_PUBLIC_KEY'), $availabilityDomain);
     } catch(ApiCallException $e) {
         $message = $e->getMessage();
         echo "$message\n";
-//            if ($notifier->isSupported()) {
-//                $notifier->notify($message);
-//            }
 
+        // Jika error karena Out of host capacity, tunggu sejenak lalu coba AD berikutnya
         if (
             $e->getCode() === 500 &&
             strpos($message, 'InternalError') !== false &&
             strpos($message, 'Out of host capacity') !== false
         ) {
-            // trying next availability domain
             sleep(16);
             continue;
         }
 
-        // current config is broken
-        return;
+        // Jika error lain atau konfigurasi bermasalah, keluar dengan exit status 1 (Failed)
+        exit(1);
     }
 
-    // success
+    // --- BERHASIL MEMBUAT INSTANCE ---
     $message = json_encode($instanceDetails, JSON_PRETTY_PRINT);
     echo "$message\n";
+    
     if ($notifier->isSupported()) {
         $notifier->notify($message);
     }
 
-    return;
+    // Keluar dengan status 0 (Sukses) untuk memicu notifikasi Telegram di GitHub Actions
+    exit(0);
 }
+
+// Jika semua Availability Domain sudah dicoba dan tetap gagal (out of capacity)
+exit(1);
