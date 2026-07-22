@@ -42,17 +42,17 @@ jobs:
 
     - name: Run Bot Script
       env:
-        OCID_USER: ${{ secrets.OCI_USER_ID }}
-        OCID_TENANCY: ${{ secrets.OCI_TENANCY_ID }}
+        OCI_USER_ID: ${{ secrets.OCI_USER_ID }}
+        OCI_TENANCY_ID: ${{ secrets.OCI_TENANCY_ID }}
         OCI_REGION: ${{ secrets.OCI_REGION }}
-        OCID_SUBNET: ${{ secrets.OCI_SUBNET_ID }}
-        OCID_IMAGE: ${{ secrets.OCI_IMAGE_ID }}
-        SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
-        # Opsional: Jika ingin batasi OCPU dan RAM tertentu
-        # OCPU: 4
-        # MEMORY: 24
-        OCPU: 2
-        MEMORY_IN_GBS: 12
-        BOOT_VOLUME_SIZE_IN_GBS: 150
+        OCI_SUBNET_ID: ${{ secrets.OCI_SUBNET_ID }}
+        OCI_IMAGE_ID: ${{ secrets.OCI_IMAGE_ID }}
+        OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
+        OCI_KEY_FILE_PATH: /home/runner/.oci/oci_api_key.pem
+        # Pembatasan spesifikasi ARM kustom Anda
+        OCI_OCPUS: 2
+        OCI_MEMORY_IN_GBS: 12
+        OCI_BOOT_VOLUME_SIZE_IN_GBS: 150
       run: |
         php index.php
+
