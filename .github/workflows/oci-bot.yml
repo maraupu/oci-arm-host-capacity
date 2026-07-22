@@ -1,9 +1,14 @@
 name: OCI ARM Host Capacity Bot
 
 on:
+  workflow_dispatch:
   schedule:
-    - cron: '*/1 * * * *' # Otomatis berjalan setiap 1 menit
-  workflow_dispatch: # Memungkinkan Anda menjalankan bot secara manual
+    - cron: '*/1 * * * *' # Minimal interval yang stabil di GitHub Actions
+
+# Diperlukan agar runner bisa mematikan workflow ini sendiri saat sukses
+permissions:
+  actions: write
+  contents: read
 
 jobs:
   run-bot:
@@ -39,14 +44,12 @@ jobs:
 
     - name: Run Bot Script
       env:
-        # Parameter API utama
         OCI_USER_ID: ${{ secrets.OCI_USER_ID }}
         OCI_TENANCY_ID: ${{ secrets.OCI_TENANCY_ID }}
         OCI_REGION: ${{ secrets.OCI_REGION }}
         OCI_KEY_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
         OCI_PRIVATE_KEY_FILENAME: /home/runner/.oci/oci_api_key.pem
         
-        # Parameter Spesifikasi & Jaringan Jatah ARM Gratisan Anda
         OCI_SUBNET_ID: ${{ secrets.OCI_SUBNET_ID }}
         OCI_IMAGE_ID: ${{ secrets.OCI_IMAGE_ID }}
         OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
@@ -55,8 +58,28 @@ jobs:
         OCI_MEMORY_IN_GBS: 12
         OCI_BOOT_VOLUME_SIZE_IN_GBS: 150
         
-        # Pengaturan Tambahan agar Bot Berjalan Stabil
-        OCI_AVAILABILITY_DOMAIN: "" # Biarkan kosong agar otomatis mendeteksi semua domain yang tersedia
-        OCI_MAX_INSTANCES: 1 # Maksimal membuat 1 instance saja
+        OCI_AVAILABILITY_DOMAIN: ""
+        OCI_MAX_INSTANCES: 1
       run: |
         php index.php
+
+    # Step di bawah ini HANYA berjalan jika 'php index.php' mengembalikan status SUKSES (exit 0)
+    - name: Send Telegram Notification on Success
+      if: success()
+      env:
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        MESSAGE="🎉 *OCI ARM Instance Berhasil Dibuat!*%0AServer Anda sudah aktif di Oracle Cloud."
+        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+          -d "chat_id=${TELEGRAM_CHAT_ID}" \
+          -d "text=${MESSAGE}" \
+          -d "parse_mode=Markdown"
+
+    - name: Disable Workflow Automatically
+      if: success()
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        echo "Mematikan bot otomatis karena server sudah berhasil dibuat..."
+        gh workflow disable oci-bot.yml
