@@ -3,7 +3,7 @@ name: OCI ARM Host Capacity Bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/1 * * * *' # Minimal interval yang stabil di GitHub Actions
+    - cron: '*/5 * * * *' # Minimal interval yang stabil di GitHub Actions
 
 # Diperlukan agar runner bisa mematikan workflow ini sendiri saat sukses
 permissions:
