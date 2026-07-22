@@ -39,7 +39,6 @@ jobs:
         
         chmod 600 ~/.oci/oci_api_key.pem
 
-
     - name: Run Bot Script
       env:
         OCI_USER_ID: ${{ secrets.OCI_USER_ID }}
@@ -49,10 +48,13 @@ jobs:
         OCI_IMAGE_ID: ${{ secrets.OCI_IMAGE_ID }}
         OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
         OCI_KEY_FILE_PATH: /home/runner/.oci/oci_api_key.pem
+        # Menambahkan variabel fingerprint yang kurang
+        OCI_KEY_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
         # Pembatasan spesifikasi ARM kustom Anda
         OCI_OCPUS: 2
         OCI_MEMORY_IN_GBS: 12
         OCI_BOOT_VOLUME_SIZE_IN_GBS: 150
       run: |
         php index.php
+
 
