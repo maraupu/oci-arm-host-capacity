@@ -78,6 +78,9 @@ jobs:
           -d "text=${MESSAGE}" \
           -d "parse_mode=Markdown"
 
+    - name: Check GitHub CLI
+      run: gh --version
+  
     - name: Disable Workflow Automatically
       if: success()
       env:
