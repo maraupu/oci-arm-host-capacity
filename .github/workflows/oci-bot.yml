@@ -3,12 +3,9 @@ name: OCI ARM Host Capacity Bot
 on:
   workflow_dispatch:
 
-  schedule:
-    - cron: '*/10 * * * *'
-
-  push:
-    branches:
-      - main
+permissions:
+  actions: write
+  contents: read
 
 # Diperlukan agar runner bisa mematikan workflow ini sendiri saat sukses
 permissions:
