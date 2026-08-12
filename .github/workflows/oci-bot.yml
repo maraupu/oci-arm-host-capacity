@@ -8,6 +8,10 @@ permissions:
   actions: write
   contents: read
 
+concurrency:
+  group: oci-arm-capacity
+  cancel-in-progress: false
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
