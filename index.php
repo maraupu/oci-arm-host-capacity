@@ -17,7 +17,9 @@ $dotenv = \Dotenv\Dotenv::createUnsafeImmutable(__DIR__, $envFilename);
 $dotenv->safeLoad();
 
 /*
- * OCI CONFIG
+ * ========================================
+ * OCI CONFIGURATION
+ * ========================================
  */
 $config = new OciConfig(
     getenv('OCI_REGION'),
@@ -33,7 +35,9 @@ $config = new OciConfig(
 );
 
 /*
+ * ========================================
  * BOOT VOLUME
+ * ========================================
  */
 $bootVolumeSizeInGBs = (string) getenv('OCI_BOOT_VOLUME_SIZE_IN_GBS');
 $bootVolumeId = (string) getenv('OCI_BOOT_VOLUME_ID');
@@ -45,7 +49,9 @@ if ($bootVolumeSizeInGBs) {
 }
 
 /*
+ * ========================================
  * OCI API
+ * ========================================
  */
 $api = new OciApi();
 
@@ -62,7 +68,9 @@ if (getenv('TOO_MANY_REQUESTS_TIME_WAIT')) {
 }
 
 /*
- * CONFIGURATION
+ * ========================================
+ * GENERAL CONFIGURATION
+ * ========================================
  */
 $shape = getenv('OCI_SHAPE') ?: 'VM.Standard.A1.Flex';
 
@@ -74,16 +82,20 @@ if (getenv('OCI_MAX_INSTANCES') !== false) {
 }
 
 /*
+ * ========================================
  * RETRY CONFIGURATION
  *
- * 3 request setiap trigger.
+ * Maksimal 2 request setiap trigger.
+ * Jeda request kedua = 45 detik.
+ * ========================================
  */
-$maxAttempts = 3;
-$minDelay = 20;
-$maxDelay = 25;
+$maxAttempts = 2;
+$retryDelay = 45;
 
 /*
+ * ========================================
  * HEADER
+ * ========================================
  */
 echo "========================================\n";
 echo " OCI ARM HOST CAPACITY BOT\n";
@@ -93,12 +105,18 @@ echo "Shape  : {$shape}\n";
 echo "OCPU   : " . getenv('OCI_OCPUS') . "\n";
 echo "RAM    : " . getenv('OCI_MEMORY_IN_GBS') . " GB\n";
 echo "Retry  : {$maxAttempts} requests\n";
+echo "Delay  : {$retryDelay} seconds\n";
 echo "========================================\n";
 
 /*
+ * ========================================
  * CHECK EXISTING INSTANCE
+ * ========================================
  */
 try {
+
+    echo "\n";
+    echo "Memeriksa instance yang sudah ada...\n";
 
     $instances = $api->getInstances($config);
 
@@ -112,32 +130,53 @@ try {
     if ($existingInstances) {
 
         echo "\n";
-        echo "Instance sudah tersedia.\n";
+        echo "========================================\n";
+        echo "INSTANCE SUDAH ADA\n";
+        echo "========================================\n";
+
         echo $existingInstances . "\n";
+
         echo "Bot dihentikan.\n";
 
+        /*
+         * Exit 0 supaya workflow dianggap sukses.
+         */
         exit(0);
     }
+
+    echo "Belum ada instance {$shape}.\n";
 
 } catch (\Throwable $e) {
 
     echo "\n";
-    echo "Gagal mengecek instance:\n";
+    echo "========================================\n";
+    echo "ERROR SAAT CEK INSTANCE\n";
+    echo "========================================\n";
+
     echo $e->getMessage() . "\n";
 
     exit(1);
 }
 
 /*
+ * ========================================
  * GET AVAILABILITY DOMAIN
+ * ========================================
  */
 try {
+
+    echo "\n";
+    echo "Mendapatkan Availability Domain...\n";
 
     if (!empty($config->availabilityDomains)) {
 
         if (is_array($config->availabilityDomains)) {
-            $availabilityDomains = $config->availabilityDomains;
+
+            $availabilityDomains =
+                $config->availabilityDomains;
+
         } else {
+
             $availabilityDomains = [
                 $config->availabilityDomains
             ];
@@ -145,21 +184,26 @@ try {
 
     } else {
 
-        $availabilityDomains = $api->getAvailabilityDomains($config);
+        $availabilityDomains =
+            $api->getAvailabilityDomains($config);
     }
 
 } catch (\Throwable $e) {
 
     echo "\n";
-    echo "Gagal mendapatkan Availability Domain:\n";
+    echo "========================================\n";
+    echo "ERROR AVAILABILITY DOMAIN\n";
+    echo "========================================\n";
+
     echo $e->getMessage() . "\n";
 
     exit(1);
 }
 
 /*
- * Singapore ap-singapore-1
- * gunakan Availability Domain pertama.
+ * ========================================
+ * NORMALIZE AVAILABILITY DOMAIN
+ * ========================================
  */
 $availabilityDomain = null;
 
@@ -170,7 +214,9 @@ foreach ($availabilityDomains as $domain) {
     }
 
     if ($domain) {
+
         $availabilityDomain = $domain;
+
         break;
     }
 }
@@ -188,7 +234,9 @@ echo "Availability Domain:\n";
 echo "{$availabilityDomain}\n";
 
 /*
- * 3 CREATE ATTEMPTS
+ * ========================================
+ * CREATE INSTANCE
+ * ========================================
  */
 for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
 
@@ -209,7 +257,9 @@ for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
         );
 
         /*
+         * ========================================
          * SUCCESS
+         * ========================================
          */
         echo "\n";
         echo "========================================\n";
@@ -223,9 +273,10 @@ for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
 
         echo $message . "\n";
 
-        /*
-         * Telegram dikirim oleh GitHub Actions.
-         */
+        echo "\n";
+        echo "Workflow akan dianggap SUKSES.\n";
+        echo "Telegram akan dikirim oleh GitHub Actions.\n";
+
         exit(0);
 
     } catch (ApiCallException $e) {
@@ -238,7 +289,9 @@ for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
         echo $message . "\n";
 
         /*
+         * ========================================
          * OUT OF HOST CAPACITY
+         * ========================================
          */
         $outOfCapacity =
             stripos($message, 'Out of host capacity') !== false ||
@@ -249,25 +302,46 @@ for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
             echo "\n";
             echo "⚠️ Out of host capacity.\n";
 
+            /*
+             * Masih boleh melakukan request kedua.
+             */
             if ($attempt < $maxAttempts) {
 
-                $wait = random_int($minDelay, $maxDelay);
+                echo "\n";
+                echo "Request berikutnya akan dilakukan dalam ";
+                echo "{$retryDelay} detik...\n";
 
-                echo "Menunggu {$wait} detik sebelum request berikutnya...\n";
+                /*
+                 * Countdown sederhana tanpa cls.
+                 */
+                for ($remaining = $retryDelay; $remaining > 0; $remaining--) {
 
-                sleep($wait);
+                    echo "\rMenunggu: {$remaining} detik   ";
+                    sleep(1);
+                }
+
+                echo "\rMenunggu selesai.                \n";
 
                 continue;
             }
 
-            echo "3 attempt sudah gagal.\n";
+            /*
+             * Semua attempt sudah gagal.
+             */
+            echo "\n";
+            echo "========================================\n";
+            echo "2 REQUEST GAGAL\n";
+            echo "========================================\n";
+
             echo "Menunggu cron-job.org berikutnya.\n";
 
             exit(1);
         }
 
         /*
-         * TOO MANY REQUESTS
+         * ========================================
+         * TOO MANY REQUESTS - 429
+         * ========================================
          */
         if (
             $code === 429 ||
@@ -276,21 +350,39 @@ for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
         ) {
 
             echo "\n";
-            echo "⚠️ TooManyRequests (429).\n";
-            echo "Menghentikan attempt untuk trigger ini.\n";
+            echo "========================================\n";
+            echo "⚠️ OCI RATE LIMIT (429)\n";
+            echo "========================================\n";
+
+            echo "OCI menolak request karena terlalu banyak request.\n";
+            echo "Tidak melakukan retry tambahan pada trigger ini.\n";
+            echo "Cron-job.org akan mencoba kembali pada interval berikutnya.\n";
 
             exit(1);
         }
 
         /*
-         * ERROR LAIN
+         * ========================================
+         * OTHER ERROR
+         * ========================================
+         *
+         * Jangan retry error konfigurasi,
+         * authorization, image, subnet, dll.
          */
         echo "\n";
-        echo "❌ Error bukan Out of Capacity.\n";
-        echo "Bot dihentikan.\n";
+        echo "========================================\n";
+        echo "❌ ERROR BUKAN CAPACITY\n";
+        echo "========================================\n";
+
+        echo "Bot dihentikan untuk mencegah retry yang tidak perlu.\n";
 
         exit(1);
     }
 }
 
+/*
+ * ========================================
+ * SAFETY EXIT
+ * ========================================
+ */
 exit(1);
