@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace Hitrov;
 
-
 use Hitrov\Exception\ApiCallException;
 use Hitrov\Exception\CurlException;
 use Hitrov\Interfaces\CacheInterface;
@@ -23,18 +22,7 @@ class OciApi
     private TooManyRequestsWaiterInterface $waiter;
 
     /**
-     * @param OciConfig $config
-     * @param string $shape
-     * @param string $sshKey
-     * @param string $availabilityDomain
-     * @return array
-     *
-     * @throws ApiCallException
-     * @throws JsonException
-     * @throws OCI\Exception\PrivateKeyFileNotFoundException
-     * @throws OCI\Exception\SignerValidateException
-     * @throws OCI\Exception\SigningValidationFailedException
-     * @throws CurlException
+     * Create OCI instance.
      */
     public function createInstance(
         OciConfig $config,
@@ -43,17 +31,32 @@ class OciApi
         string $availabilityDomain
     ): array
     {
-        if (isset($this->waiter) && $this->waiter->isConfigured()) {
-            if ($this->waiter->isTooEarly()) {
+        if (
+            isset($this->waiter)
+            &&
+            $this->waiter->isConfigured()
+        ) {
+
+            if (
+                $this->waiter->isTooEarly()
+            ) {
+
                 throw new TooManyRequestsWaiterException(
-                    "Will retry after {$this->waiter->secondsRemaining()} seconds",
+                    "Will retry after "
+                    .
+                    $this->waiter->secondsRemaining()
+                    .
+                    " seconds"
                 );
             }
 
             $this->waiter->remove();
         }
 
-        $displayName = 'instance-' . date('Ymd-Hi');
+        $displayName =
+            'instance-'
+            .
+            date('Ymd-Hi');
 
         $body = <<<EOD
 {
@@ -95,92 +98,307 @@ class OciApi
 }
 EOD;
 
-        $baseUrl = "{$this->getBaseApiUrl($config)}/instances/";
+        $baseUrl =
+            "{$this->getBaseApiUrl($config)}"
+            .
+            "/instances/";
 
         try {
-            return $this->call($config, $baseUrl, 'POST', $body);
-        } catch(ApiCallException $e) {
-            $message = $e->getMessage();
-            if ($e->getCode() != 429 && strpos($message, 'TooManyRequests') === false) {
+
+            return $this->call(
+                $config,
+                $baseUrl,
+                'POST',
+                $body
+            );
+
+        } catch (
+            ApiCallException $e
+        ) {
+
+            $message =
+                $e->getMessage();
+
+            if (
+                $e->getCode() != 429
+                &&
+                strpos(
+                    $message,
+                    'TooManyRequests'
+                ) === false
+            ) {
+
                 throw $e;
             }
 
-            if (!isset($this->waiter) || !$this->waiter->isConfigured()) {
+            if (
+                !isset($this->waiter)
+                ||
+                !$this->waiter->isConfigured()
+            ) {
+
                 throw $e;
             }
 
             $this->waiter->enable();
-            throw new TooManyRequestsWaiterException($message);
+
+            throw new TooManyRequestsWaiterException(
+                $message
+            );
         }
     }
 
     /**
-     * @param OciConfig $config
-     * @return array
+     * Resize VM.Standard.A1.Flex.
      *
-     * @throws ApiCallException
-     * @throws JsonException
-     * @throws OCI\Exception\PrivateKeyFileNotFoundException
-     * @throws OCI\Exception\SignerValidateException
-     * @throws OCI\Exception\SigningValidationFailedException
+     * Example:
+     *
+     * 1 OCPU / 6 GB
+     *       ↓
+     * 2 OCPU / 12 GB
      */
-    public function getInstances(OciConfig $config): array
+    public function updateInstanceShape(
+        OciConfig $config,
+        string $instanceId,
+        string $shape,
+        int $ocpus,
+        int $memoryInGBs
+    ): array
     {
-        $baseUrl = "{$this->getBaseApiUrl($config)}/instances/";
-        $params = ['compartmentId' => $config->tenancyId];
+        $bodyArray = [
+            'shape' => $shape,
+            'shapeConfig' => [
+                'ocpus' => $ocpus,
+                'memoryInGBs' => $memoryInGBs,
+            ],
+        ];
 
-        return $this->call($config, $baseUrl, 'GET', null, $params);
+        $body =
+            json_encode(
+                $bodyArray,
+                JSON_UNESCAPED_SLASHES
+            );
+
+        if ($body === false) {
+
+            throw new JsonException(
+                'Unable to encode resize request body.'
+            );
+        }
+
+        $baseUrl =
+            "{$this->getBaseApiUrl($config)}"
+            .
+            "/instances/{$instanceId}";
+
+        echo "\n";
+        echo "OCI UpdateInstance request\n";
+        echo "Instance ID: {$instanceId}\n";
+        echo "Shape      : {$shape}\n";
+        echo "OCPU       : {$ocpus}\n";
+        echo "Memory     : {$memoryInGBs} GB\n";
+
+        try {
+
+            return $this->call(
+                $config,
+                $baseUrl,
+                'PUT',
+                $body
+            );
+
+        } catch (
+            ApiCallException $e
+        ) {
+
+            throw $e;
+        }
     }
 
-    public function checkExistingInstances(OciConfig $config, array $listResponse, string $shape, int $maxRunningInstancesOfThatShape): string
+    /**
+     * Get all instances.
+     */
+    public function getInstances(
+        OciConfig $config
+    ): array
     {
-        $this->existingInstances = array_filter($listResponse, function ($instance) use ($shape) {
-//        $unacceptableStates = ['RUNNING', 'PROVISIONING', 'STARTING', 'STOPPED', 'STOPPING', 'TERMINATING'];
-            $acceptableStates = ['TERMINATED'];
-            return !in_array($instance['lifecycleState'], $acceptableStates) && $instance['shape'] === $shape;
-        });
+        $baseUrl =
+            "{$this->getBaseApiUrl($config)}"
+            .
+            "/instances/";
 
-        if (count($this->existingInstances) < $maxRunningInstancesOfThatShape) {
+        $params = [
+            'compartmentId' =>
+                $config->tenancyId
+        ];
+
+        return $this->call(
+            $config,
+            $baseUrl,
+            'GET',
+            null,
+            $params
+        );
+    }
+
+    /**
+     * Original Hitrov compatibility method.
+     */
+    public function checkExistingInstances(
+        OciConfig $config,
+        array $listResponse,
+        string $shape,
+        int $maxRunningInstancesOfThatShape
+    ): string
+    {
+        $this->existingInstances =
+            array_filter(
+                $listResponse,
+                function ($instance) use (
+                    $shape
+                ) {
+
+                    $acceptableStates = [
+                        'TERMINATED'
+                    ];
+
+                    return
+                        !in_array(
+                            $instance[
+                                'lifecycleState'
+                            ],
+                            $acceptableStates
+                        )
+                        &&
+                        $instance[
+                            'shape'
+                        ] === $shape;
+                }
+            );
+
+        if (
+            count(
+                $this->existingInstances
+            )
+            <
+            $maxRunningInstancesOfThatShape
+        ) {
+
             return '';
         }
 
-        $displayNames = array_map(function ($instance) {
-            return $instance['displayName'];
-        }, $this->existingInstances);
-        $displayNamesString = implode(', ', $displayNames);
+        $displayNames =
+            array_map(
+                function ($instance) {
+                    return
+                        $instance[
+                            'displayName'
+                        ];
+                },
+                $this->existingInstances
+            );
 
-        $lifecycleStates = array_map(function ($instance) {
-            return $instance['lifecycleState'];
-        }, $this->existingInstances);
-        $lifecycleStatesString = implode(', ', $lifecycleStates);
+        $displayNamesString =
+            implode(
+                ', ',
+                $displayNames
+            );
 
-        return "Already have an instance(s) [$displayNamesString] in state(s) (respectively) [$lifecycleStatesString]. User: $config->ociUserId\n";
+        $lifecycleStates =
+            array_map(
+                function ($instance) {
+                    return
+                        $instance[
+                            'lifecycleState'
+                        ];
+                },
+                $this->existingInstances
+            );
+
+        $lifecycleStatesString =
+            implode(
+                ', ',
+                $lifecycleStates
+            );
+
+        return
+            "Already have an instance(s) "
+            .
+            "[$displayNamesString] "
+            .
+            "in state(s) "
+            .
+            "(respectively) "
+            .
+            "[$lifecycleStatesString]. "
+            .
+            "User: "
+            .
+            $config->ociUserId
+            .
+            "\n";
     }
 
     /**
-     * @param OciConfig $config
-     * @return array
-     *
-     * @throws ApiCallException
-     * @throws JsonException
-     * @throws OCI\Exception\PrivateKeyFileNotFoundException
-     * @throws OCI\Exception\SignerValidateException
-     * @throws OCI\Exception\SigningValidationFailedException
+     * Get Availability Domains.
      */
-    public function getAvailabilityDomains(OciConfig $config): array
+    public function getAvailabilityDomains(
+        OciConfig $config
+    ): array
     {
         $data = null;
-        if (getenv('CACHE_AVAILABILITY_DOMAINS') && isset($this->cache)) {
-            $data = $this->cache->get('getAvailabilityDomains');
+
+        if (
+            getenv(
+                'CACHE_AVAILABILITY_DOMAINS'
+            )
+            &&
+            isset($this->cache)
+        ) {
+
+            $data =
+                $this->cache->get(
+                    'getAvailabilityDomains'
+                );
         }
 
         if (!$data) {
-            $baseUrl = "{$this->getBaseApiUrl($config, 'identity')}/availabilityDomains/";
-            $params = ['compartmentId' => $config->tenancyId];
 
-            $data = $this->call($config, $baseUrl, 'GET', null, $params);
-            if (getenv('CACHE_AVAILABILITY_DOMAINS') && isset($this->cache)) {
-                $this->cache->add($data, 'getAvailabilityDomains');
+            $baseUrl =
+                "{$this->getBaseApiUrl("
+                .
+                $config
+                .
+                ", 'identity')}"
+                .
+                "/availabilityDomains/";
+
+            $params = [
+                'compartmentId' =>
+                    $config->tenancyId
+            ];
+
+            $data =
+                $this->call(
+                    $config,
+                    $baseUrl,
+                    'GET',
+                    null,
+                    $params
+                );
+
+            if (
+                getenv(
+                    'CACHE_AVAILABILITY_DOMAINS'
+                )
+                &&
+                isset($this->cache)
+            ) {
+
+                $this->cache->add(
+                    $data,
+                    'getAvailabilityDomains'
+                );
             }
         }
 
@@ -188,32 +406,25 @@ EOD;
     }
 
     /**
-     * @return array
+     * Existing instances.
      */
     public function getExistingInstances(): array
     {
         return $this->existingInstances;
     }
 
-    public function setCache(CacheInterface $cache): void
+    /**
+     * Set cache.
+     */
+    public function setCache(
+        CacheInterface $cache
+    ): void
     {
         $this->cache = $cache;
     }
 
     /**
-     * @param OciConfig $config
-     * @param string $baseUrl
-     * @param string $method
-     * @param string|null $body
-     * @param array $params
-     * @return array
-     *
-     * @throws ApiCallException
-     * @throws JsonException
-     * @throws OCI\Exception\PrivateKeyFileNotFoundException
-     * @throws OCI\Exception\SignerValidateException
-     * @throws OCI\Exception\SigningValidationFailedException
-     * @throws CurlException
+     * OCI HTTP call.
      */
     public function call(
         OciConfig $config,
@@ -224,46 +435,98 @@ EOD;
     )
     {
         $paramsString = '';
+
         if ($params) {
-            $paramsString = '?' . http_build_query($params);
+
+            $paramsString =
+                '?'
+                .
+                http_build_query(
+                    $params
+                );
         }
 
-        $url = "$baseUrl$paramsString";
+        $url =
+            "$baseUrl$paramsString";
 
-        $signer = new Signer(
-            $config->tenancyId,
-            $config->ociUserId,
-            $config->keyFingerPrint,
-            $config->privateKeyFilename
-        );
+        $signer =
+            new Signer(
+                $config->tenancyId,
+                $config->ociUserId,
+                $config->keyFingerPrint,
+                $config->privateKeyFilename
+            );
 
-        $headers = $signer->getHeaders($url, $method, $body, 'application/json');
+        $headers =
+            $signer->getHeaders(
+                $url,
+                $method,
+                $body,
+                'application/json'
+            );
 
         $curlOptions = [
-            CURLOPT_URL => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_MAXREDIRS => 1,
-            CURLOPT_TIMEOUT => 10,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-            CURLOPT_CUSTOMREQUEST => $method,
-            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_URL =>
+                $url,
+
+            CURLOPT_RETURNTRANSFER =>
+                true,
+
+            CURLOPT_MAXREDIRS =>
+                1,
+
+            CURLOPT_TIMEOUT =>
+                10,
+
+            CURLOPT_FOLLOWLOCATION =>
+                true,
+
+            CURLOPT_HTTP_VERSION =>
+                CURL_HTTP_VERSION_1_1,
+
+            CURLOPT_CUSTOMREQUEST =>
+                $method,
+
+            CURLOPT_HTTPHEADER =>
+                $headers,
         ];
 
         if ($body) {
-            $curlOptions[CURLOPT_POSTFIELDS] = $body;
+
+            $curlOptions[
+                CURLOPT_POSTFIELDS
+            ] = $body;
         }
 
-        return HttpClient::getResponse($curlOptions);
+        return
+            HttpClient::getResponse(
+                $curlOptions
+            );
     }
 
-    public function setWaiter(TooManyRequestsWaiterInterface $waiter): void
+    /**
+     * Set 429 waiter.
+     */
+    public function setWaiter(
+        TooManyRequestsWaiterInterface $waiter
+    ): void
     {
         $this->waiter = $waiter;
     }
 
-    private function getBaseApiUrl(OciConfig $config, string $api = 'iaas'): string
+    /**
+     * OCI API URL.
+     */
+    private function getBaseApiUrl(
+        OciConfig $config,
+        string $api = 'iaas'
+    ): string
     {
-        return "https://$api.{$config->region}.oraclecloud.com/20160918";
+        return
+            "https://$api."
+            .
+            "{$config->region}"
+            .
+            ".oraclecloud.com/20160918";
     }
 }
