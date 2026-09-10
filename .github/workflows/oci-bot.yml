@@ -75,7 +75,7 @@ jobs:
         OCI_AVAILABILITY_DOMAIN: ""
         OCI_MAX_INSTANCES: 1
 
-        OCI_MAX_ATTEMPTS: 2
+        OCI_MAX_ATTEMPTS: 3
         OCI_RETRY_DELAY: 45
 
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
