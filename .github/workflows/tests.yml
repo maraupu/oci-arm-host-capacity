@@ -8,39 +8,46 @@ on:
     branches:
       - main
 
-#  schedule:
-#    - cron: '*/5 * * * *'
-
 jobs:
   tests:
     runs-on: ubuntu-latest
+
     strategy:
       matrix:
         php-versions: ['8.3']
+
     name: integration-tests (PHP ${{ matrix.php-versions }})
+
     steps:
-      - uses: actions/checkout@v1
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Install PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php-versions }}
+
       - name: Validate composer.json and composer.lock
         run: composer validate
 
       - name: Get Composer Cache Directory
         id: composer-cache
         run: |
-          echo "::set-output name=dir::$(composer config cache-files-dir)"
-      - uses: actions/cache@v2
+          echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: ${{ runner.os }}-${{ matrix.php-version }}-composer-${{ matrix.dependencies }}-${{ hashFiles('**/composer.lock') }}
+          key: ${{ runner.os }}-php-${{ matrix.php-versions }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.php-version }}-composer-${{ matrix.dependencies }}-
+            ${{ runner.os }}-php-${{ matrix.php-versions }}-composer-
 
       - name: Install dependencies
         run: |
-          composer update --prefer-dist --no-progress
+          composer install --prefer-dist --no-progress --no-interaction
+
       - name: Run test suite
         run: |
           vendor/bin/phpunit --color tests/
@@ -60,4 +67,3 @@ jobs:
           OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
           TELEGRAM_USER_ID: ${{ secrets.TELEGRAM_USER_ID }}
           TELEGRAM_BOT_API_KEY: ${{ secrets.TELEGRAM_BOT_API_KEY }}
-
