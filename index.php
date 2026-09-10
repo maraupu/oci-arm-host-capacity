@@ -826,7 +826,7 @@ foreach (
                 echo "HUNTING BELUM BERHASIL\n";
                 echo "========================================\n";
 
-                echo "2 attempt sudah digunakan.\n";
+                echo "{$maxAttempts} attempt sudah digunakan.\n";
                 echo "Cron berikutnya akan mencoba lagi.\n";
 
                 exit(1);
