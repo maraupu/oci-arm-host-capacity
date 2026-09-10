@@ -1,9 +1,8 @@
-name: OCI ARM Host Capacity Bot
+Masukkan konten file di sininame: OCI ARM Host Capacity Bot
 
 on:
   workflow_dispatch:
 
-# Diperlukan agar runner bisa mematikan workflow ini sendiri saat sukses
 permissions:
   actions: write
   contents: read
@@ -17,74 +16,112 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup PHP
-      uses: shivammathur/setup-php@v2
-      with:
-        php-version: '8.2'
-        extensions: curl, json, openssl
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: curl, json, openssl
 
-    - name: Install Dependencies
-      run: composer install
+      - name: Install Dependencies
+        run: composer install --no-interaction --prefer-dist
 
-    - name: Create OCI Config and Private Key
-      run: |
-        mkdir -p ~/.oci
-        echo "[DEFAULT]" > ~/.oci/config
-        echo "user=${{ secrets.OCI_USER_ID }}" >> ~/.oci/config
-        echo "fingerprint=${{ secrets.OCI_FINGERPRINT }}" >> ~/.oci/config
-        echo "tenancy=${{ secrets.OCI_TENANCY_ID }}" >> ~/.oci/config
-        echo "region=${{ secrets.OCI_REGION }}" >> ~/.oci/config
-        echo "key_file=/home/runner/.oci/oci_api_key.pem" >> ~/.oci/config
-        
-        cat << 'EOF' > /home/runner/.oci/oci_api_key.pem
-        ${{ secrets.OCI_PRIVATE_KEY }}
-        EOF
-        chmod 600 /home/runner/.oci/oci_api_key.pem
+      - name: Create OCI Config and Private Key
+        run: |
+          mkdir -p ~/.oci
 
-    - name: Run Bot Script
-      env:
-        OCI_USER_ID: ${{ secrets.OCI_USER_ID }}
-        OCI_TENANCY_ID: ${{ secrets.OCI_TENANCY_ID }}
-        OCI_REGION: ${{ secrets.OCI_REGION }}
-        OCI_KEY_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
-        OCI_PRIVATE_KEY_FILENAME: /home/runner/.oci/oci_api_key.pem
-        
-        OCI_SUBNET_ID: ${{ secrets.OCI_SUBNET_ID }}
-        OCI_IMAGE_ID: ${{ secrets.OCI_IMAGE_ID }}
-        OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
-        OCI_SHAPE: VM.Standard.A1.Flex
-        OCI_OCPUS: 2
-        OCI_MEMORY_IN_GBS: 12
-        OCI_BOOT_VOLUME_SIZE_IN_GBS: 150
-        
-        OCI_AVAILABILITY_DOMAIN: ""
-        OCI_MAX_INSTANCES: 1
-      run: |
-        php index.php
+          cat > ~/.oci/config <<EOF
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_ID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          tenancy=${{ secrets.OCI_TENANCY_ID }}
+          region=${{ secrets.OCI_REGION }}
+          key_file=/home/runner/.oci/oci_api_key.pem
+          EOF
 
-    # Step di bawah ini HANYA berjalan jika 'php index.php' mengembalikan status SUKSES (exit 0)
-    - name: Send Telegram Notification on Success
-      if: success()
-      env:
-        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: |
-        MESSAGE="🎉 *OCI ARM Instance Berhasil Dibuat!*%0AServer Anda sudah aktif di Oracle Cloud."
-        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-          -d "chat_id=${TELEGRAM_CHAT_ID}" \
-          -d "text=${MESSAGE}" \
-          -d "parse_mode=Markdown"
+          cat > /home/runner/.oci/oci_api_key.pem <<'EOF'
+          ${{ secrets.OCI_PRIVATE_KEY }}
+          EOF
 
-    - name: Check GitHub CLI
-      run: gh --version
-  
-    - name: Disable Workflow Automatically
-      if: success()
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        echo "Mematikan bot otomatis karena server sudah berhasil dibuat..."
-        gh workflow disable oci-bot.yml
+          chmod 600 /home/runner/.oci/oci_api_key.pem
+
+      - name: Run OCI ARM Bot
+        env:
+          OCI_USER_ID: ${{ secrets.OCI_USER_ID }}
+          OCI_TENANCY_ID: ${{ secrets.OCI_TENANCY_ID }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_KEY_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_PRIVATE_KEY_FILENAME: /home/runner/.oci/oci_api_key.pem
+
+          OCI_SUBNET_ID: ${{ secrets.OCI_SUBNET_ID }}
+          OCI_IMAGE_ID: ${{ secrets.OCI_IMAGE_ID }}
+          OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
+
+          # SHAPE
+          OCI_SHAPE: VM.Standard.A1.Flex
+
+          # TARGET HUNTING
+          # 1 OCPU / 6 GB
+          OCI_OCPUS: 1
+          OCI_MEMORY_IN_GBS: 6
+
+          # TARGET RESIZE
+          # 2 OCPU / 12 GB
+          OCI_RESIZE_OCPUS: 2
+          OCI_RESIZE_MEMORY_IN_GBS: 12
+
+          # BOOT VOLUME
+          OCI_BOOT_VOLUME_SIZE_IN_GBS: 150
+
+          # Kosong = otomatis mendapatkan AD dari OCI
+          OCI_AVAILABILITY_DOMAIN: ""
+
+          # Maksimal 1 instance A1
+          OCI_MAX_INSTANCES: 1
+
+          # Maksimal 2 request per run
+          OCI_MAX_ATTEMPTS: 2
+
+          # Jeda antar percobaan
+          OCI_RETRY_DELAY: 45
+
+          # TELEGRAM
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+        run: |
+          php index.php
+
+      # HANYA BERJALAN JIKA index.php EXIT 0
+      # Artinya target 2/12 sudah terkonfirmasi.
+      - name: Send Telegram Notification - 2/12 Success
+        if: success()
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MESSAGE="🎉 *OCI ARM 2/12 BERHASIL!*%0A%0AInstance VM.Standard.A1.Flex sudah mencapai:%0A• 2 OCPU%0A• 12 GB RAM%0A• Boot Volume 150 GB%0A%0A✅ Target Always Free A1 tercapai.%0A%0A🚀 Server siap digunakan."
+
+          curl -sS -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            -d "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${MESSAGE}" \
+            -d "parse_mode=Markdown"
+
+      - name: Check GitHub CLI
+        if: success()
+        run: gh --version
+
+      - name: Disable Workflow Automatically
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "========================================"
+          echo "2/12 sudah berhasil dan terverifikasi."
+          echo "Mematikan OCI ARM hunting bot..."
+          echo "========================================"
+
+          gh workflow disable oci-bot.yml
