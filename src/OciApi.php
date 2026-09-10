@@ -1,4 +1,4 @@
-<?php
+Masukkan konten file di sini<?php
 declare(strict_types=1);
 
 namespace Hitrov;
@@ -365,13 +365,10 @@ EOD;
         if (!$data) {
 
             $baseUrl =
-                "{$this->getBaseApiUrl("
-                .
-                $config
-                .
-                ", 'identity')}"
-                .
-                "/availabilityDomains/";
+               $baseUrl =
+                    "{$this->getBaseApiUrl($config, 'identity')}"
+                    .
+                    "/availabilityDomains/";
 
             $params = [
                 'compartmentId' =>
