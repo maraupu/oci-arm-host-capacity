@@ -76,7 +76,7 @@ jobs:
         OCI_MAX_INSTANCES: 1
 
         OCI_MAX_ATTEMPTS: 2
-        OCI_RETRY_DELAY: 45
+        OCI_RETRY_DELAY: 50
 
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
